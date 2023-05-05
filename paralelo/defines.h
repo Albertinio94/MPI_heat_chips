@@ -11,6 +11,8 @@
 #define NCOL (CSIZE*param.scale + 2)  // extended column number
 
 
+
+
 struct info_param {
   int    nconf, nchip, max_iter, scale;  // num. of configurations to test, num. of chips, max. num. iterations, card size scale
   float  t_ext, tmax_chip, t_delta;      // external temp., max. temp. of a chip, temp. incr. for convergence
