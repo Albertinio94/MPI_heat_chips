@@ -60,6 +60,7 @@ double calculate_Tmean(struct info_param param, float *grid, float *grid_chips, 
 	int i, j, end, niter;
 	float Tfull;
 	double t_local, t_global, t_mean, t_mean_0 = param.t_ext;
+	MPI_Request reqs[2];
 
 	end = 0;
 	niter = 0;
@@ -68,23 +69,26 @@ double calculate_Tmean(struct info_param param, float *grid, float *grid_chips, 
 		niter++;
 		t_mean = 0.0;
 
-		// Heat injection and air cooling
+		// heat injection and air cooling
 		thermal_update(param, grid, grid_chips, pid, npr, tam);
 
 		// Send border rows to neighbors
-		if (pid < npr-1) {
-			MPI_Ssend(&grid[tam*NCOL], 1, row, pid+1, 0, MPI_COMM_WORLD);
-			MPI_Recv(&grid[(tam+1)*NCOL], 1, row, pid+1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-		}
-		if (pid > 0) {
-			MPI_Recv(&grid[0], 1, row, pid-1, 0, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-			MPI_Ssend(&grid[NCOL], 1, row, pid-1, 0, MPI_COMM_WORLD);
-		}
+		if (pid < npr-1) MPI_Isend(&grid[tam*NCOL], 1, row, pid+1, 0, MPI_COMM_WORLD, &reqs[0]);
+		if (pid > 0) MPI_Isend(&grid[NCOL], 1, row, pid-1, 0, MPI_COMM_WORLD, &reqs[1]);
+
+		if (pid < npr-1) MPI_Wait(&reqs[0], MPI_STATUS_IGNORE);
+		if (pid > 0) MPI_Wait(&reqs[1], MPI_STATUS_IGNORE);
+
+		if (pid < npr-1) MPI_Irecv(&grid[(tam+1)*NCOL], 1, row, pid+1, 0, MPI_COMM_WORLD, &reqs[1]);
+		if (pid > 0) MPI_Irecv(&grid[0], 1, row, pid-1, 0, MPI_COMM_WORLD, &reqs[0]);
+
+		if (pid < npr-1) MPI_Wait(&reqs[1], MPI_STATUS_IGNORE);
+		if (pid > 0) MPI_Wait(&reqs[0], MPI_STATUS_IGNORE);
 		
-		// Thermal diffusion
+		// thermal diffusion
 		t_local = thermal_diffusion(param, grid, grid_aux, pid, npr, tam);
 
-		// Convergence every 10 iterations
+		// convergence every 10 iterations
 		if (niter % 10 == 0) {
 			MPI_Allreduce(&t_local, &t_global, 1, MPI_DOUBLE, MPI_SUM, MPI_COMM_WORLD);
 			t_mean = t_global / ((NCOL - 2) * (NROW - 2));
@@ -92,7 +96,7 @@ double calculate_Tmean(struct info_param param, float *grid, float *grid_chips, 
 			if ((fabs(t_mean - t_mean_0) < param.t_delta) || (niter > param.max_iter)) end = 1; 
 			else t_mean_0 = t_mean;
 		}
-	}
+	} // end while
 
 	if (pid == ROOT) printf("Iter (par): %d\t", niter);
 	return (t_mean);
