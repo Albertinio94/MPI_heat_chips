@@ -150,7 +150,7 @@ int main(int argc, char *argv[])
 		Tmean = calculate_Tmean(param, grid, grid_chips_local, grid_aux, pid, npr, tam[pid], row);
 
 		// gather calculated grids
-		MPI_Gatherv(&grid[NCOL], tam[pid], row, final_grid, tam, dist, row, ROOT, MPI_COMM_WORLD);
+		MPI_Gather(&grid[NCOL], tam[pid], row, final_grid, tam[pid], row, ROOT, MPI_COMM_WORLD);
 
 		if (pid == ROOT) {
 			printf("  Config: %2d    Tmean: %1.2f\n", conf + 1, Tmean);
