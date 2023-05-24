@@ -13,7 +13,7 @@
 #define NCOL (CSIZE * param.scale + 2) // extended column number
 
 #define N_PARAMS 7 // number of general parameters
-#define P 5
+#define P 16
 #define MANAGER (npr-1)
 #define IS_MANAGER (pid == MANAGER)
 #define LEADER 0 // process leading a group of P processes

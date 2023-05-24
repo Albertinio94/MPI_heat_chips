@@ -3,10 +3,17 @@
 #include <mpi.h>
 #include <stdio.h>
 #include <math.h>
+#include <stdint.h>
 
 #include "defines.h"
 
-
+/************************************************************************************/
+//Swap grid and grid_aux instead of dumping grid_aux into grid
+void swapGrids(float **a, float **b){
+    uint64_t aux = (uint64_t) *a;
+    *a = *b;
+    *b = (float *) aux;
+}
 
 /************************************************************************************/
 void thermal_update(struct info_param param, float *grid, float *grid_chips, int pid, int npr, int tam) {
@@ -31,7 +38,7 @@ void thermal_update(struct info_param param, float *grid, float *grid_chips, int
 }
 
 /************************************************************************************/
-double thermal_diffusion(struct info_param param, float *grid, float *grid_aux, int pid, int npr, int tam) {
+double thermal_diffusion(struct info_param param, float **grid, float **grid_aux, int pid, int npr, int tam) {
 	int i, j;
 	float T;
 	double Tfull = 0.0;
@@ -41,24 +48,20 @@ double thermal_diffusion(struct info_param param, float *grid, float *grid_aux, 
 
 	for (i = first_row; i < last_row; i++)
 		for (j = 1; j < NCOL - 1; j++) {
-			T = grid[i * NCOL + j] +
-				0.10 * (grid[(i + 1) * NCOL + j] + grid[(i - 1) * NCOL + j] + grid[i * NCOL + (j + 1)] + grid[i * NCOL + (j - 1)] +
-						grid[(i + 1) * NCOL + j + 1] + grid[(i - 1) * NCOL + j + 1] + grid[(i + 1) * NCOL + (j - 1)] + grid[(i - 1) * NCOL + (j - 1)] - 8 * grid[i * NCOL + j]);
+			T = (*grid)[i * NCOL + j] +
+				0.10 * ((*grid)[(i + 1) * NCOL + j] + (*grid)[(i - 1) * NCOL + j] + (*grid)[i * NCOL + (j + 1)] + (*grid)[i * NCOL + (j - 1)] +
+						(*grid)[(i + 1) * NCOL + j + 1] + (*grid)[(i - 1) * NCOL + j + 1] + (*grid)[(i + 1) * NCOL + (j - 1)] + (*grid)[(i - 1) * NCOL + (j - 1)] - 8 * (*grid)[i * NCOL + j]);
 
-			grid_aux[i * NCOL + j] = T;
+			(*grid_aux)[i * NCOL + j] = T;
 			Tfull += T;
 		}
-
-	// new values for the grid
-	for (i = first_row; i < last_row; i++)
-		for (j = 1; j < NCOL - 1; j++)
-			grid[i * NCOL + j] = grid_aux[i * NCOL + j];
+	swapGrids(grid, grid_aux);
 
 	return (Tfull);
 }
 
 /************************************************************************************/
-double calculate_Tmean(struct info_param param, float *grid, float *grid_chips, float *grid_aux, int pid, int npr, int tam, MPI_Datatype row, MPI_Comm comm_worker) {
+double calculate_Tmean(struct info_param param, float **grid, float *grid_chips, float **grid_aux, int pid, int npr, int tam, MPI_Datatype row, MPI_Comm comm_worker) {
 	int i, j, end, niter;
 	float Tfull;
 	double t_local, t_global, t_mean, t_mean_0 = param.t_ext;
@@ -72,17 +75,17 @@ double calculate_Tmean(struct info_param param, float *grid, float *grid_chips, 
 		t_mean = 0.0;
 
 		// heat injection and air cooling
-		thermal_update(param, grid, grid_chips, pid, npr, tam);
+		thermal_update(param, *grid, grid_chips, pid, npr, tam);
 
 		// Send border rows to neighbors
-		if (pid < npr-1) MPI_Isend(&grid[tam*NCOL], 1, row, pid+1, 0, comm_worker, &reqs[0]);
-		if (pid > 0) MPI_Isend(&grid[NCOL], 1, row, pid-1, 0, comm_worker, &reqs[1]);
+		if (pid < npr-1) MPI_Isend(&(*grid)[tam*NCOL], 1, row, pid+1, 0, comm_worker, &reqs[0]);
+		if (pid > 0) MPI_Isend(&(*grid)[NCOL], 1, row, pid-1, 0, comm_worker, &reqs[1]);
 
 		if (pid < npr-1) MPI_Wait(&reqs[0], MPI_STATUS_IGNORE);
 		if (pid > 0) MPI_Wait(&reqs[1], MPI_STATUS_IGNORE);
 
-		if (pid < npr-1) MPI_Irecv(&grid[(tam+1)*NCOL], 1, row, pid+1, 0, comm_worker, &reqs[1]);
-		if (pid > 0) MPI_Irecv(&grid[0], 1, row, pid-1, 0, comm_worker, &reqs[0]);
+		if (pid < npr-1) MPI_Irecv(&(*grid)[(tam+1)*NCOL], 1, row, pid+1, 0, comm_worker, &reqs[1]);
+		if (pid > 0) MPI_Irecv(&(*grid)[0], 1, row, pid-1, 0, comm_worker, &reqs[0]);
 
 		if (pid < npr-1) MPI_Wait(&reqs[1], MPI_STATUS_IGNORE);
 		if (pid > 0) MPI_Wait(&reqs[0], MPI_STATUS_IGNORE);

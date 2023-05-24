@@ -67,7 +67,7 @@ void init_grids(struct info_param param, float *grid, float *grid_aux, int tam) 
 
 	for (i = 0; i < tam; i++)
 		for (j = 0; j < NCOL; j++)
-			grid[i * NCOL + j] = param.t_ext;
+			grid_aux[i * NCOL + j] = grid[i * NCOL + j] = param.t_ext;
 }
 
 /************************************************************************************/
@@ -79,7 +79,6 @@ int main(int argc, char *argv[])
 	int **chip_coord;
 
 	float *grid, *final_grid, *grid_chips_global, *grid_chips_local, *grid_aux;
-	float *current_matrix, *not_current_matrix;
 	struct info_results BT;
 
 	int conf = 0, i, j;
@@ -233,7 +232,7 @@ int main(int argc, char *argv[])
 				MPI_Scatterv(grid_chips_global, tam, dist, row, grid_chips_local, tam[pid_worker], row, LEADER, comm_worker);
 
 				// main loop: thermal injection/disipation until convergence (t_delta or max_iter)
-				Tmean = calculate_Tmean(param, grid, grid_chips_local, grid_aux, pid_worker, P, tam[pid_worker], row, comm_worker);
+				Tmean = calculate_Tmean(param, &grid, grid_chips_local, &grid_aux, pid_worker, P, tam[pid_worker], row, comm_worker);
 
 				// gather calculated grids
 				MPI_Gatherv(&grid[NCOL], tam[pid_worker], row, final_grid, tam, dist, row, LEADER, comm_worker);
