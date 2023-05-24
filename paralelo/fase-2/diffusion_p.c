@@ -6,6 +6,8 @@
 
 #include "defines.h"
 
+
+
 /************************************************************************************/
 void thermal_update(struct info_param param, float *grid, float *grid_chips, int pid, int npr, int tam) {
 	int i, j, a, b;

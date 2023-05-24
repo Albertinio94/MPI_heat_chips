@@ -29,6 +29,8 @@
 #include "faux_p.h"
 #include "diffusion_p.h"
 
+/************************************************************************************/
+//Function-like macro to avoid having to pass a lot of parameters
 #define process_request() {\
 	MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);\
 	if (status.MPI_TAG == CONF_RESULT) {\
@@ -77,6 +79,7 @@ int main(int argc, char *argv[])
 	int **chip_coord;
 
 	float *grid, *final_grid, *grid_chips_global, *grid_chips_local, *grid_aux;
+	float *current_matrix, *not_current_matrix;
 	struct info_results BT;
 
 	int conf = 0, i, j;
@@ -103,7 +106,7 @@ int main(int argc, char *argv[])
 	if (argc != 2) {
 		if (IS_MANAGER) printf("\n\nERROR: needs a card description file.\n\n");
 		exit(-1);
-	} else if (npr == 1 || npr != 1 + 5 * ((npr - 1) / 5)) {
+	} else if (npr == 1 || npr != 1 + P * ((npr - 1) / P)) {
 		if (IS_MANAGER) printf("\n\nERROR: number of processors must be 1 + k*%d, with k > 0.\n\n", P);
 		exit(-1);
 	}
