@@ -63,16 +63,16 @@ int main(int argc, char *argv[])
 	float *grid, *final_grid, *grid_chips_global, *grid_chips_local, *grid_aux;
 	struct info_results BT;
 
-	int conf = 0, i;
+	int conf = 0, i, j;
 	double t0, t1;
 	double tej, Tmean;
 
-	int pid, pid_group, npr, size;
+	int pid, pid_worker, group_leader, npr, size;
 	int quotient, remainder, *tam, *dist;
 
 	MPI_Comm comm_worker;
-	int worker_group_key, *last_conf_sent_to_groups[(npr-1)/P], pos, tag;
-	char buf_resultado_conf[NROW * NCOL + sizeof(double)]; // Tmean + new grid
+	int worker_group_key, *last_conf_sent_to_groups, pos, tag;
+	char *buf_resultado_conf; // Tmean + new grid
 	MPI_Status status;
 
 	struct MPI_info_param mpi_param;
@@ -85,14 +85,14 @@ int main(int argc, char *argv[])
 
 	// Check if card description file has been given
 	if (argc != 2) {
-		if (pid == MANAGER) printf("\n\nERROR: needs a card description file.\n\n");
+		if (IS_MANAGER) printf("\n\nERROR: needs a card description file.\n\n");
 		exit(-1);
 	} else if (npr == 1 || npr != 1 + 5 * ((npr - 1) / 5)) {
-		if (pid == MANAGER) printf("\n\nERROR: number of processors must be 1 + k*%d, with k > 0.\n\n", P);
+		if (IS_MANAGER) printf("\n\nERROR: number of processors must be 1 + k*%d, with k > 0.\n\n", P);
 		exit(-1);
 	}
 
-	if (pid == MANAGER) {
+	if (IS_MANAGER) {
 		// reading initial data file
 		read_data(argv[1], &param, &chips, &chip_coord);
 
@@ -118,7 +118,8 @@ int main(int argc, char *argv[])
 	// Create communicators for groups of workers
 	worker_group_key = pid/P; // manager = npr - 1
 	MPI_Comm_split(MPI_COMM_WORLD, worker_group_key, pid, &comm_worker);
-	pid_group = pid % P;
+	MPI_Comm_rank (comm_worker, &pid_worker);
+	group_leader = worker_group_key * P;
 
 	// // Calculate piece of data to send to each process
 	size = P * sizeof(int);	
@@ -137,85 +138,69 @@ int main(int argc, char *argv[])
 		if (i == 0) dist[i] = 0;
 		else dist[i] = dist[i-1] + tam[i-1];
 	}
-
+	
 	if (IS_MANAGER) {
 		grid_chips_global = (float *) malloc(NROW*NCOL * sizeof(float));
 		final_grid = (float *) malloc(NROW*NCOL * sizeof(float));	
 		BT.bgrid = (float *) malloc(NROW*NCOL * sizeof(float));
 		BT.cgrid = (float *) malloc(NROW*NCOL * sizeof(float));
 		BT.Tmean = MAXDOUBLE;
+		buf_resultado_conf = (char *) malloc(TAM_PACK);
+		last_conf_sent_to_groups = (int *) malloc(((npr-1)/P) * sizeof(int));
 	} else if (IS_LEADER) {
 		grid_chips_global = (float *) malloc(NROW*NCOL * sizeof(float));
-		grid_chips_local = (float *) malloc(tam[pid]*NCOL * sizeof(float));
+		grid_chips_local = (float *) malloc(tam[pid_worker]*NCOL * sizeof(float));
 		final_grid = (float *) malloc(NROW*NCOL * sizeof(float));	
-		grid = (float *) malloc((tam[pid]+2)*NCOL * sizeof(float));
-		grid_aux = (float *) malloc(tam[pid]*NCOL * sizeof(float));
+		grid = (float *) malloc((tam[pid_worker]+2)*NCOL * sizeof(float));
+		grid_aux = (float *) malloc(tam[pid_worker]*NCOL * sizeof(float));
+		buf_resultado_conf = (char *) malloc(TAM_PACK);
 	} else {
-		grid = (float *) malloc((tam[pid]+2)*NCOL * sizeof(float));
-		grid_aux = (float *) malloc(tam[pid]*NCOL * sizeof(float));
-		grid_chips_local = (float *) malloc(tam[pid]*NCOL * sizeof(float));
-	}
-
-	// loop to process chip configurations
-	for (conf = 0; conf < param.nconf; conf++) {
-		// initial values for grids
-		if (pid == MANAGER) init_grid_chips(conf, param, chips, chip_coord, grid_chips_root);
-		init_grids(param, grid, grid_aux, tam[pid]+2);
-		MPI_Scatterv(grid_chips_root, tam, dist, row, grid_chips_local, tam[pid], row, MANAGER, MPI_COMM_WORLD);
-
-		// main loop: thermal injection/disipation until convergence (t_delta or max_iter)
-		Tmean = calculate_Tmean(param, grid, grid_chips_local, grid_aux, pid, npr, tam[pid], row);
-
-		// gather calculated grids
-		MPI_Gatherv(&grid[NCOL], tam[pid], row, final_grid, tam, dist, row, MANAGER, MPI_COMM_WORLD);
-
-		if (pid == MANAGER) {
-			printf("  Config: %2d    Tmean: %1.2f\n", conf + 1, Tmean);
-			// processing configuration results
-			results_conf(conf, Tmean, param, final_grid, grid_chips_root, &BT);
-		}
+		grid = (float *) malloc((tam[pid_worker]+2)*NCOL * sizeof(float));
+		grid_aux = (float *) malloc(tam[pid_worker]*NCOL * sizeof(float));
+		grid_chips_local = (float *) malloc(tam[pid_worker]*NCOL * sizeof(float));
 	}
 
 	// loop to process chip configurations
 	if (IS_MANAGER) {
 		for (conf = 0; conf < param.nconf; conf++) {
 			init_grid_chips(conf, param, chips, chip_coord, grid_chips_global);
-
 			MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-			if (status.MPI_TAG == CONF_RESULT) {				
-				MPI_Recv(buf_resultado_conf, NROW*NCOL+sizeof(double), MPI_PACKED, status.MPI_SOURCE, CONF_RESULT, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+			if (status.MPI_TAG == CONF_RESULT) {
+				MPI_Recv(buf_resultado_conf, TAM_PACK, MPI_PACKED, status.MPI_SOURCE, CONF_RESULT, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
 				// extract Tmean and final grid
 				pos = 0;
-				MPI_Unpack(buf_resultado_conf, NROW*NCOL+sizeof(double), &pos, Tmean, 1, MPI_DOUBLE, MPI_COMM_WORLD);
-				MPI_Unpack(buf_resultado_conf, NROW*NCOL+sizeof(double), &pos, final_grid, NROW*NCOL, MPI_FLOAT, MPI_COMM_WORLD);
+				MPI_Unpack(buf_resultado_conf, TAM_PACK, &pos, &Tmean, 1, MPI_DOUBLE, MPI_COMM_WORLD);
+				MPI_Unpack(buf_resultado_conf, TAM_PACK, &pos, final_grid, NROW*NCOL, MPI_FLOAT, MPI_COMM_WORLD);
 
 				// Save configuration
-				printf("  Config: %2d    Tmean: %1.2f\n", conf + 1, Tmean);
-				results_conf(conf, Tmean, param, final_grid, &BT);
+				printf("  Config: %2d    Tmean: %1.2f\n", last_conf_sent_to_groups[status.MPI_SOURCE/P], Tmean);
+				results_conf(last_conf_sent_to_groups[status.MPI_SOURCE/P], Tmean, param, final_grid, &BT);
 			} else { // prevent buffer block
 				MPI_Recv(NULL, 0, MPI_INT, status.MPI_SOURCE, CONF_REQUEST, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 			}
 
 			// Load new grid chips and send it to leader
-			last_conf_sent_to_groups[status.MPI_SOURCE/P] = conf;
+			last_conf_sent_to_groups[status.MPI_SOURCE/P] = conf+1;
 			MPI_Send(grid_chips_global, NROW*NCOL, MPI_FLOAT, status.MPI_SOURCE, CONF, MPI_COMM_WORLD);
 		}
 
 		// attend last request of each group
 		for (i = 0; i < (npr-1)/P; i++) {
 			MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-			if (status.MPI_TAG == CONF_RESULT) {				
-				MPI_Recv(buf_resultado_conf, NROW*NCOL+sizeof(double), MPI_PACKED, status.MPI_SOURCE, status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
+
+			if (status.MPI_TAG == CONF_RESULT) {
+				MPI_Recv(buf_resultado_conf, TAM_PACK, MPI_PACKED, status.MPI_SOURCE, status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 
 				// extract Tmean and final grid
 				pos = 0;
-				MPI_Unpack(buf_resultado_conf, NROW*NCOL+sizeof(double), &pos, Tmean, 1, MPI_DOUBLE, MPI_COMM_WORLD);
-				MPI_Unpack(buf_resultado_conf, NROW*NCOL+sizeof(double), &pos, final_grid, NROW*NCOL, MPI_FLOAT, MPI_COMM_WORLD);
+				MPI_Unpack(buf_resultado_conf, TAM_PACK, &pos, &Tmean, 1, MPI_DOUBLE, MPI_COMM_WORLD);
+				MPI_Unpack(buf_resultado_conf, TAM_PACK, &pos, final_grid, NROW*NCOL, MPI_FLOAT, MPI_COMM_WORLD);
 
 				// Save configuration
-				printf("  Config: %2d    Tmean: %1.2f\n", conf + 1, Tmean);
-				results_conf(conf, Tmean, param, final_grid, &BT);
+				printf("  Config: %2d    Tmean: %1.2f\n", last_conf_sent_to_groups[status.MPI_SOURCE/P], Tmean);
+				results_conf(last_conf_sent_to_groups[status.MPI_SOURCE/P], Tmean, param, final_grid, &BT);
 			} else { // prevent buffer block
 				MPI_Recv(NULL, 0, MPI_INT, status.MPI_SOURCE, CONF_REQUEST, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
 			}
@@ -227,17 +212,19 @@ int main(int argc, char *argv[])
 		init_grid_chips(BT.conf, param, chips, chip_coord, grid_chips_global);
 		for (i = 1; i < NROW - 1; i++)
 			for (j = 1; j < NCOL - 1; j++)
-				BT->cgrid[i * NCOL + j] = grid_chips[i * NCOL + j];
+				BT.cgrid[i * NCOL + j] = grid_chips_global[i * NCOL + j];
 		// Compute time
 		t1 = MPI_Wtime();
 		tej = t1 - t0;
-		printf("\n\n >>> Best configuration: %2d    Tmean: %1.2f\n", BT.conf + 1, BT.Tmean);
+		printf("\n\n >>> Best configuration: %2d    Tmean: %1.2f\n", BT.conf, BT.Tmean);
 		printf("   > Time (parallel): %1.3f s \n\n", tej);
 		// Write best configuration results
 		results(param, &BT, argv[1]);
 
 	} else {
-		if (IS_LEADER) MPI_Send(NULL, 0, MPI_INT, MANAGER, CONF_REQUEST, MPI_COMM_WORLD);
+		if (IS_LEADER) {
+			MPI_Send(NULL, 0, MPI_INT, MANAGER, CONF_REQUEST, MPI_COMM_WORLD);
+		}
 
 		while (1) { // recibir configuraciones
 			if (IS_LEADER) {
@@ -248,23 +235,25 @@ int main(int argc, char *argv[])
 			}
 
 			// enviar tags al resto de workers (0 ==> seguimos, 1 ==> mpi_finalize)
+			if (!IS_LEADER) tag = 5;
 			MPI_Bcast(&tag, 1, MPI_INT, LEADER, comm_worker);
 
 			if (tag == CONF) {
-				init_grids(param, grid, grid_aux, tam[pid_group]+2);
-				MPI_Scatterv(grid_chips_global, tam, dist, row, grid_chips_local, tam[pid_group], row, LEADER, comm_worker);
+				init_grids(param, grid, grid_aux, tam[pid_worker]+2);
+				MPI_Barrier(comm_worker);
+				MPI_Scatterv(grid_chips_global, tam, dist, row, grid_chips_local, tam[pid_worker], row, LEADER, comm_worker);
 
 				// main loop: thermal injection/disipation until convergence (t_delta or max_iter)
-				Tmean = calculate_Tmean(param, grid, grid_chips_local, grid_aux, pid, npr, tam[pid_group], row);
+				Tmean = calculate_Tmean(param, grid, grid_chips_local, grid_aux, pid_worker, P, tam[pid_worker], row, comm_worker);
 
 				// gather calculated grids
-				MPI_Gatherv(&grid[NCOL], tam[pid_group], row, final_grid, tam, dist, row, LEADER, comm_worker);
+				MPI_Gatherv(&grid[NCOL], tam[pid_worker], row, final_grid, tam, dist, row, LEADER, comm_worker);
 
 				if (IS_LEADER) {
 					pos = 0;
-					MPI_Pack(Tmean, 1, MPI_DOUBLE, buf_resultado_conf, NROW * NCOL + sizeof(double), &pos, MPI_COMM_WORLD);
-					MPI_Pack(final_grid, NROW*NCOL, MPI_FLOAT, buf_resultado_conf, NROW * NCOL + sizeof(double), &pos, MPI_COMM_WORLD);
-					MPI_Send(buf_resultado_conf, NROW * NCOL + sizeof(double), MPI_PACKED, CONF_RESULT, MPI_COMM_WORLD);
+					MPI_Pack(&Tmean, 1, MPI_DOUBLE, buf_resultado_conf, TAM_PACK, &pos, MPI_COMM_WORLD);
+					MPI_Pack(final_grid, NROW*NCOL, MPI_FLOAT, buf_resultado_conf, TAM_PACK, &pos, MPI_COMM_WORLD);
+					MPI_Send(buf_resultado_conf, TAM_PACK, MPI_PACKED, MANAGER, CONF_RESULT, MPI_COMM_WORLD);
 				}
 			} else { // tag = FINALIZE
 				break;
@@ -288,9 +277,9 @@ int main(int argc, char *argv[])
 	// 	// free(grid_chips_root); // uncommenting it causes segmentation fault
 	// }
 
+
 	// MPI_Type_free(&row);
 	// MPI_Comm_free(&comm_worker);
 	MPI_Finalize();
-
 	return (0);
 }

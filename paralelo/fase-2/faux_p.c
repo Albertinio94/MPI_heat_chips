@@ -53,7 +53,7 @@ void read_data(char *file_name, struct info_param *param, struct info_chips **ch
 }
 
 /************************************************************************************/
-void results_conf(int conf, double Tmean, struct info_param param, float *grid, /*float *grid_chips*/, struct info_results *BT)
+void results_conf(int conf, double Tmean, struct info_param param, float *grid/*, float *grid_chips*/, struct info_results *BT)
 {
 	int i, j;
 
@@ -91,7 +91,7 @@ void results(struct info_param param, struct info_results *BT, char *finput)
 	FILE *fd;
 	char name[100];
 
-	printf("\n\n >>> BEST CONFIGURATION: %2d\t Tmean: %1.2f\n\n", BT->conf + 1, BT->Tmean);
+	printf("\n\n >>> BEST CONFIGURATION: %2d\t Tmean: %1.2f\n\n", BT->conf, BT->Tmean);
 
 	sprintf(name, "%s_par.res", finput);
 	fd = fopen(name, "w");
@@ -100,7 +100,7 @@ void results(struct info_param param, struct info_results *BT, char *finput)
 
 	fprint_grid(fd, BT->bgrid, param);
 
-	fprintf(fd, "\n\n >>> BEST CONFIGURATION: %d\t Tmean: %1.2f\n\n", BT->conf + 1, BT->Tmean);
+	fprintf(fd, "\n\n >>> BEST CONFIGURATION: %d\t Tmean: %1.2f\n\n", BT->conf, BT->Tmean);
 	fclose(fd);
 
 	sprintf(name, "%s_par.chips", finput);

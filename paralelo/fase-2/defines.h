@@ -14,10 +14,12 @@
 
 #define N_PARAMS 7 // number of general parameters
 #define P 5
-#define MANAGER = (npr-1)
+#define MANAGER (npr-1)
 #define IS_MANAGER (pid == MANAGER)
-#define LEADER (pid % P) // process leading a group of P processes
-#define IS_LEADER (pid % P == 0 && !IS_MANAGER)
+#define LEADER 0 // process leading a group of P processes
+#define IS_LEADER (pid_worker == LEADER)
+
+#define TAM_PACK (NROW*NCOL*sizeof(float) + sizeof(double))
 
 // leader -> manager
 #define CONF_REQUEST 0
