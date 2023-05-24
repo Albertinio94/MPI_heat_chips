@@ -171,11 +171,11 @@ int main(int argc, char *argv[])
 		grid_chips_local = (float *) malloc(tam[pid_worker]*NCOL * sizeof(float));
 		final_grid = (float *) malloc(NROW*NCOL * sizeof(float));	
 		grid = (float *) malloc((tam[pid_worker]+2)*NCOL * sizeof(float));
-		grid_aux = (float *) malloc(tam[pid_worker]*NCOL * sizeof(float));
+		grid_aux = (float *) malloc((tam[pid_worker]+2)*NCOL * sizeof(float));
 		buf_resultado_conf = (char *) malloc(TAM_PACK);
 	} else {
 		grid = (float *) malloc((tam[pid_worker]+2)*NCOL * sizeof(float));
-		grid_aux = (float *) malloc(tam[pid_worker]*NCOL * sizeof(float));
+		grid_aux = (float *) malloc((tam[pid_worker]+2)*NCOL * sizeof(float));
 		grid_chips_local = (float *) malloc(tam[pid_worker]*NCOL * sizeof(float));
 	}
 

@@ -45,14 +45,14 @@ double thermal_diffusion(struct info_param param, float *grid, float *grid_aux, 
 				0.10 * (grid[(i + 1) * NCOL + j] + grid[(i - 1) * NCOL + j] + grid[i * NCOL + (j + 1)] + grid[i * NCOL + (j - 1)] +
 						grid[(i + 1) * NCOL + j + 1] + grid[(i - 1) * NCOL + j + 1] + grid[(i + 1) * NCOL + (j - 1)] + grid[(i - 1) * NCOL + (j - 1)] - 8 * grid[i * NCOL + j]);
 
-			grid_aux[(i-1) * NCOL + j] = T;
+			grid_aux[i * NCOL + j] = T;
 			Tfull += T;
 		}
 
 	// new values for the grid
 	for (i = first_row; i < last_row; i++)
 		for (j = 1; j < NCOL - 1; j++)
-			grid[i * NCOL + j] = grid_aux[(i-1) * NCOL + j];
+			grid[i * NCOL + j] = grid_aux[i * NCOL + j];
 
 	return (Tfull);
 }
