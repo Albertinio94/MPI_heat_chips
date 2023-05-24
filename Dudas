@@ -1,4 +1,0 @@
-heat_p {
-    - No es necesario reservar una matriz entera de grid_chips en todos los procesos
-    Basta con que el root reserve todo, y lo demas solo tam+2
-}
