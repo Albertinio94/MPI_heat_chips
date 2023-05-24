@@ -29,6 +29,22 @@
 #include "faux_p.h"
 #include "diffusion_p.h"
 
+#define process_request() {\
+	MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);\
+	if (status.MPI_TAG == CONF_RESULT) {\
+		MPI_Recv(buf_resultado_conf, TAM_PACK, MPI_PACKED, status.MPI_SOURCE, CONF_RESULT, MPI_COMM_WORLD, MPI_STATUS_IGNORE);\
+		/* extract Tmean and final grid*/\
+		pos = 0;\
+		MPI_Unpack(buf_resultado_conf, TAM_PACK, &pos, &Tmean, 1, MPI_DOUBLE, MPI_COMM_WORLD);\
+		MPI_Unpack(buf_resultado_conf, TAM_PACK, &pos, final_grid, NROW*NCOL, MPI_FLOAT, MPI_COMM_WORLD);\
+		/*Save configuration*/\
+		printf("  Config: %2d    Tmean: %1.2f\n", last_conf_sent_to_groups[status.MPI_SOURCE/P], Tmean);\
+		results_conf(last_conf_sent_to_groups[status.MPI_SOURCE/P], Tmean, param, final_grid, &BT);\
+	} else { /* prevent buffer block*/\
+		MPI_Recv(NULL, 0, MPI_INT, status.MPI_SOURCE, CONF_REQUEST, MPI_COMM_WORLD, MPI_STATUS_IGNORE);\
+	}\
+}
+
 /************************************************************************************/
 void init_grid_chips(int conf, struct info_param param, struct info_chips *chips, int **chip_coord, float *grid_chips) {
 	int i, j, n;
@@ -164,23 +180,8 @@ int main(int argc, char *argv[])
 	if (IS_MANAGER) {
 		for (conf = 0; conf < param.nconf; conf++) {
 			init_grid_chips(conf, param, chips, chip_coord, grid_chips_global);
-			MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
 
-			if (status.MPI_TAG == CONF_RESULT) {
-				MPI_Recv(buf_resultado_conf, TAM_PACK, MPI_PACKED, status.MPI_SOURCE, CONF_RESULT, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-				// extract Tmean and final grid
-				pos = 0;
-				MPI_Unpack(buf_resultado_conf, TAM_PACK, &pos, &Tmean, 1, MPI_DOUBLE, MPI_COMM_WORLD);
-				MPI_Unpack(buf_resultado_conf, TAM_PACK, &pos, final_grid, NROW*NCOL, MPI_FLOAT, MPI_COMM_WORLD);
-
-				// Save configuration
-				printf("  Config: %2d    Tmean: %1.2f\n", last_conf_sent_to_groups[status.MPI_SOURCE/P], Tmean);
-				results_conf(last_conf_sent_to_groups[status.MPI_SOURCE/P], Tmean, param, final_grid, &BT);
-			} else { // prevent buffer block
-				MPI_Recv(NULL, 0, MPI_INT, status.MPI_SOURCE, CONF_REQUEST, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-			}
-
+			process_request();
 			// Load new grid chips and send it to leader
 			last_conf_sent_to_groups[status.MPI_SOURCE/P] = conf+1;
 			MPI_Send(grid_chips_global, NROW*NCOL, MPI_FLOAT, status.MPI_SOURCE, CONF, MPI_COMM_WORLD);
@@ -188,22 +189,7 @@ int main(int argc, char *argv[])
 
 		// attend last request of each group
 		for (i = 0; i < (npr-1)/P; i++) {
-			MPI_Probe(MPI_ANY_SOURCE, MPI_ANY_TAG, MPI_COMM_WORLD, &status);
-
-			if (status.MPI_TAG == CONF_RESULT) {
-				MPI_Recv(buf_resultado_conf, TAM_PACK, MPI_PACKED, status.MPI_SOURCE, status.MPI_TAG, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-
-				// extract Tmean and final grid
-				pos = 0;
-				MPI_Unpack(buf_resultado_conf, TAM_PACK, &pos, &Tmean, 1, MPI_DOUBLE, MPI_COMM_WORLD);
-				MPI_Unpack(buf_resultado_conf, TAM_PACK, &pos, final_grid, NROW*NCOL, MPI_FLOAT, MPI_COMM_WORLD);
-
-				// Save configuration
-				printf("  Config: %2d    Tmean: %1.2f\n", last_conf_sent_to_groups[status.MPI_SOURCE/P], Tmean);
-				results_conf(last_conf_sent_to_groups[status.MPI_SOURCE/P], Tmean, param, final_grid, &BT);
-			} else { // prevent buffer block
-				MPI_Recv(NULL, 0, MPI_INT, status.MPI_SOURCE, CONF_REQUEST, MPI_COMM_WORLD, MPI_STATUS_IGNORE);
-			}
+			process_request();
 
 			MPI_Send(NULL, 0, MPI_INT, status.MPI_SOURCE, FINALIZE, MPI_COMM_WORLD);
 		}
