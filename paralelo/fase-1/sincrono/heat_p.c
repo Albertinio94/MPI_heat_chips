@@ -81,7 +81,7 @@ int main(int argc, char *argv[])
 
 	// Check if card description file has been given
 	if (argc != 2) {
-		if (pid == ROOT) printf("\n\nERROR: needs a card description file\n\n");
+		if (pid == ROOT) printf("\n\nERROR: needs a card description file.\n\n");
 		exit(-1);
 	}
 

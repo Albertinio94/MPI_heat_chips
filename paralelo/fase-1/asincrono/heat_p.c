@@ -8,14 +8,14 @@
 
 	 Entrada: card > la definicion de la tarjeta y las configuraciones a simular
 	 Salida: la mejor configuracion y la temperatura media
-		  card_s.chips: situacion termica inicial
-		card_s.res: la situacion termica final
+		card_par.chips: situacion termica inicial
+		card_par.res: la situacion termica final
 
 	 defines.h: definiciones de ciertas variables y estructuras de datos
 
 	 Compilar con estos dos ficheros:
-	   diffusion.c: insertar calor, difundir y calcular la temperatura media hasta que se estabilice
-	   faux.c: ciertas funciones auxiliares
+	   diffusion_p.c: insertar calor, difundir y calcular la temperatura media hasta que se estabilice
+	   faux_p.c: ciertas funciones auxiliares
 
 ************************************************************************************************/
 
@@ -81,7 +81,7 @@ int main(int argc, char *argv[])
 
 	// Check if card description file has been given
 	if (argc != 2) {
-		if (pid == ROOT) printf("\n\nERROR: needs a card description file\n\n");
+		if (pid == ROOT) printf("\n\nERROR: needs a card description file.\n\n");
 		exit(-1);
 	}
 
@@ -172,15 +172,15 @@ int main(int argc, char *argv[])
 	free(dist);
 	free(grid);
 	free(grid_aux);
-	// free(grid_chips_local); // descomentarlo provoca segmentation fault
+	// free(grid_chips_local); // uncommenting it causes segmentation fault
 	if (pid == ROOT) {
 		for (i = 0; i < param.nconf; i++) free(chip_coord[i]);
 		free(chip_coord);
 		free(chips);
 		free(BT.bgrid);
 		free(BT.cgrid);
-		// free(final_grid); // // descomentarlo provoca segmentation fault
-		// free(grid_chips_root); // descomentarlo provoca segmentation fault
+		// free(final_grid); // // uncommenting it causes segmentation fault
+		// free(grid_chips_root); // uncommenting it causes segmentation fault
 	}
 
 	MPI_Type_free(&row);
